@@ -3,7 +3,20 @@
    =================================== */
 
 // ---- CONFIG ----
-const PHOTOS = [
+// Compressed thumbnails for fast loading
+const PHOTOS_THUMB = [
+    'photos/thumbs/IMG_8630.jpg',
+    'photos/thumbs/IMG_8631.jpg',
+    'photos/thumbs/IMG_8632.jpg',
+    'photos/thumbs/IMG_8633.jpg',
+    'photos/thumbs/IMG_8634.jpg',
+    'photos/thumbs/IMG_8635.jpg',
+    'photos/thumbs/IMG_8636.jpg',
+    'photos/thumbs/IMG_8637.jpg',
+];
+
+// Full-res originals for modal zoom
+const PHOTOS_FULL = [
     'photos/IMG_8630.PNG',
     'photos/IMG_8631.PNG',
     'photos/IMG_8632.PNG',
@@ -16,8 +29,20 @@ const PHOTOS = [
 
 const EMOJI_PARTICLES = ['🌸', '💖', '🩷', '💕', '🌷', '✨', '💗', '🌺', '❤️', '🪻', '💐'];
 const PARTICLE_COUNT = 20;
-
 const FLOAT_ANIMATIONS = ['floatPhoto', 'floatPhotoAlt', 'floatPhotoDrift'];
+const WAVES = 4;
+
+// Shocked reactions that change on each slide
+const REACTIONS = [
+    { emoji: '😱', text: 'Waaa 3la zin !!' },
+    { emoji: '🤯', text: 'Chkoun hadi ?!' },
+    { emoji: '😍', text: 'Ya latiiiiif !!' },
+    { emoji: '🥵', text: 'Trop belle wallah' },
+    { emoji: '😳', text: '3la slama a zina !!' },
+    { emoji: '💀', text: 'Mattiini b zinek' },
+    { emoji: '🫠', text: 'Ana mdouweb !!' },
+    { emoji: '🔥', text: 'Nar nar nar !!' },
+];
 
 // ---- FLOATING EMOJI PARTICLES ----
 function createParticles() {
@@ -49,8 +74,6 @@ function createParticles() {
 }
 
 // ---- FLOATING HEART-SHAPED PHOTOS ----
-const WAVES = 6; // number of duplicate waves for density
-
 function createFloatingPhotos() {
     const container = document.getElementById('floating-photos');
     if (!container) return;
@@ -60,19 +83,16 @@ function createFloatingPhotos() {
         wrapper.classList.add('floating-heart-photo');
 
         const img = document.createElement('img');
-        img.src = PHOTOS[index % PHOTOS.length];
-        img.alt = `Photo ${(index % PHOTOS.length) + 1}`;
+        img.src = PHOTOS_THUMB[index % PHOTOS_THUMB.length];
+        img.alt = `Photo ${(index % PHOTOS_THUMB.length) + 1}`;
         img.loading = 'lazy';
         img.decoding = 'async';
 
-        // Random sizing
-        const size = 60 + Math.random() * 55; // 60px to 115px
-        const left = 2 + Math.random() * 90; // spread across full width
-        const startY = 85 + Math.random() * 25; // start near bottom
-
-        // Pick a random float animation
+        const size = 60 + Math.random() * 55;
+        const left = 2 + Math.random() * 90;
+        const startY = 85 + Math.random() * 25;
         const animName = FLOAT_ANIMATIONS[Math.floor(Math.random() * FLOAT_ANIMATIONS.length)];
-        const duration = 5 + Math.random() * 5; // FAST: 5s to 10s
+        const duration = 5 + Math.random() * 5;
 
         wrapper.style.cssText = `
             width: ${size}px;
@@ -84,27 +104,146 @@ function createFloatingPhotos() {
             animation-delay: ${delay}s;
         `;
 
-        // Click to open modal
-        wrapper.addEventListener('click', () => openModal(PHOTOS[index % PHOTOS.length]));
+        wrapper.addEventListener('click', () => openModal(PHOTOS_FULL[index % PHOTOS_FULL.length]));
 
         wrapper.appendChild(img);
         container.appendChild(wrapper);
 
-        // After animation ends, remove and respawn immediately
         const totalTime = (delay + duration) * 1000;
         setTimeout(() => {
             wrapper.remove();
-            // Respawn almost immediately with new random position
             spawnPhoto(index, Math.random() * 1.5);
         }, totalTime);
     }
 
-    // Spawn many waves for high density of photos on screen
     for (let wave = 0; wave < WAVES; wave++) {
-        PHOTOS.forEach((_, index) => {
+        PHOTOS_THUMB.forEach((_, index) => {
             const initialDelay = wave * 1.2 + index * 0.4 + Math.random() * 1;
-            spawnPhoto(wave * PHOTOS.length + index, initialDelay);
+            spawnPhoto(wave * PHOTOS_THUMB.length + index, initialDelay);
         });
+    }
+}
+
+// ---- PHOTO CAROUSEL ----
+let currentSlide = 0;
+let touchStartX = 0;
+let touchEndX = 0;
+let autoSlideTimer = null;
+
+function createCarousel() {
+    const track = document.getElementById('carousel-track');
+    const dotsContainer = document.getElementById('carousel-dots');
+    if (!track || !dotsContainer) return;
+
+    PHOTOS_THUMB.forEach((photo, index) => {
+        const slide = document.createElement('div');
+        slide.classList.add('carousel-slide');
+
+        const img = document.createElement('img');
+        img.src = photo;
+        img.alt = `Photo ${index + 1}`;
+        img.loading = index === 0 ? 'eager' : 'lazy';
+        img.decoding = 'async';
+
+        const counter = document.createElement('span');
+        counter.classList.add('slide-counter');
+        counter.textContent = `${index + 1} / ${PHOTOS_THUMB.length}`;
+
+        slide.addEventListener('click', () => openModal(PHOTOS_FULL[index]));
+
+        slide.appendChild(img);
+        slide.appendChild(counter);
+        track.appendChild(slide);
+
+        const dot = document.createElement('button');
+        dot.classList.add('carousel-dot');
+        if (index === 0) dot.classList.add('active');
+        dot.setAttribute('aria-label', `Photo ${index + 1}`);
+        dot.addEventListener('click', () => {
+            goToSlide(index);
+            pauseAutoSlide();
+            startAutoSlide();
+        });
+        dotsContainer.appendChild(dot);
+    });
+
+    // Touch/swipe support
+    const wrapper = document.getElementById('carousel-wrapper');
+    if (wrapper) {
+        wrapper.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+            pauseAutoSlide();
+        }, { passive: true });
+
+        wrapper.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+            startAutoSlide();
+        }, { passive: true });
+    }
+
+    startAutoSlide();
+}
+
+function goToSlide(index) {
+    const track = document.getElementById('carousel-track');
+    const dots = document.querySelectorAll('.carousel-dot');
+    if (!track) return;
+
+    currentSlide = index;
+    track.style.transform = `translateX(-${index * 100}%)`;
+
+    dots.forEach((dot, i) => {
+        dot.classList.toggle('active', i === index);
+    });
+
+    // Update the reaction text/emoji for each slide
+    updateReaction(index);
+}
+
+function updateReaction(index) {
+    const reactionEmoji = document.querySelector('.reaction-emoji');
+    const reactionText = document.querySelector('.reaction-text');
+    if (!reactionEmoji || !reactionText) return;
+
+    const reaction = REACTIONS[index % REACTIONS.length];
+
+    // Quick pop animation
+    reactionEmoji.style.transform = 'scale(0)';
+    reactionText.style.opacity = '0';
+
+    setTimeout(() => {
+        reactionEmoji.textContent = reaction.emoji;
+        reactionText.textContent = reaction.text;
+        reactionEmoji.style.transform = 'scale(1)';
+        reactionText.style.opacity = '1';
+    }, 150);
+}
+
+function nextSlide() {
+    goToSlide((currentSlide + 1) % PHOTOS_THUMB.length);
+}
+
+function prevSlide() {
+    goToSlide((currentSlide - 1 + PHOTOS_THUMB.length) % PHOTOS_THUMB.length);
+}
+
+function handleSwipe() {
+    const diff = touchStartX - touchEndX;
+    if (Math.abs(diff) > 50) {
+        diff > 0 ? nextSlide() : prevSlide();
+    }
+}
+
+function startAutoSlide() {
+    pauseAutoSlide();
+    autoSlideTimer = setInterval(nextSlide, 3500);
+}
+
+function pauseAutoSlide() {
+    if (autoSlideTimer) {
+        clearInterval(autoSlideTimer);
+        autoSlideTimer = null;
     }
 }
 
@@ -117,6 +256,7 @@ function openModal(src) {
     modalImage.src = src;
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
+    pauseAutoSlide();
 }
 
 function closeModal() {
@@ -125,6 +265,7 @@ function closeModal() {
 
     modal.classList.remove('active');
     document.body.style.overflow = '';
+    startAutoSlide();
 }
 
 function setupModal() {
@@ -139,10 +280,10 @@ function setupModal() {
     });
 }
 
-// ---- TOUCH HEARTS (tap anywhere to spawn hearts) ----
+// ---- TOUCH HEARTS ----
 function setupTouchHearts() {
     document.addEventListener('click', (e) => {
-        if (e.target.closest('.floating-heart-photo') || e.target.closest('.modal')) return;
+        if (e.target.closest('.floating-heart-photo') || e.target.closest('.modal') || e.target.closest('.carousel-slide')) return;
 
         const hearts = ['💖', '💕', '❤️', '🩷', '💗'];
         const count = 3 + Math.floor(Math.random() * 4);
@@ -176,6 +317,7 @@ function setupTouchHearts() {
 document.addEventListener('DOMContentLoaded', () => {
     createParticles();
     createFloatingPhotos();
+    createCarousel();
     setupModal();
     setupTouchHearts();
 });
